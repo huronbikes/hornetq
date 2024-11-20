@@ -13,9 +13,14 @@
 package org.hornetq.core.client.impl;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -662,9 +667,7 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
 
       if (session.isCacheLargeMessageClient())
       {
-         largeMessageCache = File.createTempFile("tmp-large-message-" + largeMessage.getMessageID() + "-",
-                                                 ".tmp");
-         largeMessageCache.deleteOnExit();
+         largeMessageCache = createLargeMessageTempFile(largeMessage.getMessageID());
       }
 
       ClientSessionFactory sf = session.getSessionFactory();
@@ -686,6 +689,26 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
       handleRegularMessage(largeMessage, message);
    }
 
+   /**
+    * Creates a temporary file allowing large messages to persist to disk as opposed to
+    * residing in memory
+    *
+    * @param messageId the unique message identifier, used to name the file
+    * @return a file with user-only read and write permissions, set to delete on exit.
+    * @throws IOException
+    */
+   private File createLargeMessageTempFile(long messageId) throws IOException
+   {
+      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw");
+      File messageTempFile = Files.createTempFile(
+              "tmp-large-message-" + messageId + "-",
+              ".tmp",
+              PosixFilePermissions.asFileAttribute(permissions)
+      ) .toFile();
+      messageTempFile.deleteOnExit();
+      return messageTempFile;
+   }
+
    public synchronized void handleLargeMessage(final SessionReceiveLargeMessage packet) throws Exception
    {
       if (closing)
@@ -705,9 +728,7 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
 
       if (session.isCacheLargeMessageClient())
       {
-         largeMessageCache = File.createTempFile("tmp-large-message-" + currentChunkMessage.getMessageID() + "-",
-                                                 ".tmp");
-         largeMessageCache.deleteOnExit();
+         largeMessageCache = createLargeMessageTempFile(currentChunkMessage.getMessageID());
       }
 
       ClientSessionFactory sf = session.getSessionFactory();
