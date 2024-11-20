@@ -699,7 +699,7 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
     */
    private File createLargeMessageTempFile(long messageId) throws IOException
    {
-      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw");
+      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-------");
       File messageTempFile = Files.createTempFile(
               "tmp-large-message-" + messageId + "-",
               ".tmp",
