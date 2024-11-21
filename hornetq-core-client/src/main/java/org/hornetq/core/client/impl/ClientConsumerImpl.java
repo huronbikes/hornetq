@@ -15,12 +15,10 @@ package org.hornetq.core.client.impl;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.attribute.PosixFilePermission;
-import java.nio.file.attribute.PosixFilePermissions;
+import java.nio.file.Path;
 import java.security.AccessController;
 import java.security.PrivilegedAction;
 import java.util.Iterator;
-import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
@@ -70,6 +68,10 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
    private static final int NUM_PRIORITIES = 10;
 
    public static final SimpleString FORCED_DELIVERY_MESSAGE = new SimpleString("_hornetq.forced.delivery.seq");
+
+   private static final String LARGE_RESPONSE_CACHE_DIRECTORY_PREFIX = "lrc";
+
+   private static Path LARGE_RESPONSE_CACHE_DIRECTORY;
 
    // Attributes
    // -----------------------------------------------------------------------------------
@@ -690,6 +692,41 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
    }
 
    /**
+    * Creates a the LARGE_RESPONSE_CACHE_DIRECTORY and sets permissions on that directory.
+    * @throws IOException
+    */
+   private static synchronized void createLargeResponseDirectory() throws IOException
+   {
+      if (LARGE_RESPONSE_CACHE_DIRECTORY == null)
+      {
+         Path tempDirectory = Files.createTempDirectory(LARGE_RESPONSE_CACHE_DIRECTORY_PREFIX);
+         File tempDirectoryFile = tempDirectory.toFile();
+         tempDirectoryFile.setExecutable(false);
+         tempDirectoryFile.setReadable(false);
+         tempDirectoryFile.setWritable(false);
+         tempDirectoryFile.setReadable(true, true);
+         tempDirectoryFile.setWritable(true, true);
+         tempDirectoryFile.deleteOnExit();
+         LARGE_RESPONSE_CACHE_DIRECTORY = tempDirectoryFile.toPath();
+      }
+   }
+
+   /**
+    * ensures that a temporary directory for use with large messages is available in the conumser.  Sets permissions
+    * on that directory to user+rw only.
+    * @return A Path pointing to a temporary directory.
+    * @throws IOException
+    */
+   private static Path ensureLargeResponseCacheDirectory() throws IOException
+   {
+      if (LARGE_RESPONSE_CACHE_DIRECTORY == null)
+      {
+         createLargeResponseDirectory();
+      }
+      return LARGE_RESPONSE_CACHE_DIRECTORY;
+   }
+
+   /**
     * Creates a temporary file allowing large messages to persist to disk as opposed to
     * residing in memory
     *
@@ -699,14 +736,10 @@ public final class ClientConsumerImpl implements ClientConsumerInternal
     */
    private File createLargeMessageTempFile(long messageId) throws IOException
    {
-      Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-------");
-      File messageTempFile = Files.createTempFile(
-              "tmp-large-message-" + messageId + "-",
-              ".tmp",
-              PosixFilePermissions.asFileAttribute(permissions)
-      ) .toFile();
-      messageTempFile.deleteOnExit();
-      return messageTempFile;
+      return Files.createTempFile(
+               ensureLargeResponseCacheDirectory(),
+               "tmp-large-message-" + messageId + "-",
+               ".tmp").toFile();
    }
 
    public synchronized void handleLargeMessage(final SessionReceiveLargeMessage packet) throws Exception
